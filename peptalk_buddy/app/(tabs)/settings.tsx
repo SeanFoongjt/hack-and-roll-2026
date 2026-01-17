@@ -1,10 +1,15 @@
-import { ScrollView, Text, View, TouchableOpacity, Switch, Platform } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
+import { getDeepLinkUrl } from "@/constants/oauth";
 import { useColors } from "@/hooks/use-colors";
-import { useState, useEffect } from "react";
+import * as Api from "@/lib/_core/api";
+import * as CalendarAuth from "@/lib/_core/calendar-auth";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import * as Calendar from "expo-calendar";
+import * as Haptics from "expo-haptics";
+import * as Linking from "expo-linking";
+import { useEffect, useState } from "react";
+import { Platform, ScrollView, Switch, Text, TouchableOpacity, View } from "react-native";
 
 type NotificationFrequency = "daily" | "twice_daily" | "custom";
 
@@ -40,8 +45,17 @@ export default function SettingsScreen() {
     try {
       const stored = await AsyncStorage.getItem("peptalk_settings");
       if (stored) {
-        setSettings(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        const googleTokens = await CalendarAuth.getGoogleCalendarTokens();
+        const googleCalendarConnected = Boolean(googleTokens?.accessToken);
+        setSettings({
+          ...DEFAULT_SETTINGS,
+          ...parsed,
+          googleCalendarConnected,
+        });
+        return;
       }
+      setSettings(DEFAULT_SETTINGS);
     } catch (error) {
       console.error("Error loading settings:", error);
     }
@@ -83,20 +97,50 @@ export default function SettingsScreen() {
     saveSettings({ ...settings, notificationsEnabled: value });
   };
 
-  const handleGoogleCalendarConnect = () => {
+  const handleGoogleCalendarConnect = async () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    // TODO: Implement Google Calendar OAuth
-    alert("Google Calendar integration coming soon!");
+    if (Platform.OS === "web") {
+      alert("Google Calendar connection is only available on mobile for now.");
+      return;
+    }
+    try {
+      const appRedirect = getDeepLinkUrl("/oauth/google-callback");
+      const authUrl = await Api.getGoogleOAuthStartUrl(appRedirect);
+      const supported = await Linking.canOpenURL(authUrl);
+      if (!supported) {
+        alert("Unable to open Google OAuth URL.");
+        return;
+      }
+      await Linking.openURL(authUrl);
+    } catch (error) {
+      console.error("Failed to start Google Calendar OAuth:", error);
+      alert("Failed to connect Google Calendar.");
+    }
   };
 
-  const handleAppleCalendarConnect = () => {
+  const handleAppleCalendarConnect = async () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
-    // TODO: Implement Apple Calendar OAuth
-    alert("Apple Calendar integration coming soon!");
+    if (Platform.OS !== "ios") {
+      alert("Apple Calendar connection is only available on iOS.");
+      return;
+    }
+    try {
+      const permission = await Calendar.requestCalendarPermissionsAsync();
+      if (permission.status !== "granted") {
+        alert("Calendar permission not granted.");
+        return;
+      }
+      await Calendar.getCalendarsAsync(Calendar.EntityTypes.EVENT);
+      saveSettings({ ...settings, appleCalendarConnected: true });
+      alert("Apple Calendar connected!");
+    } catch (error) {
+      console.error("Failed to connect Apple Calendar:", error);
+      alert("Failed to connect Apple Calendar.");
+    }
   };
 
   const addCustomTime = () => {
@@ -124,7 +168,7 @@ export default function SettingsScreen() {
     }
     saveSettings({
       ...settings,
-      customTimes: settings.customTimes.filter((t) => t !== time),
+      customTimes: settings.customTimes.filter((t: string) => t !== time),
     });
   };
 
@@ -245,7 +289,7 @@ export default function SettingsScreen() {
                 </Text>
                 {settings.notificationFrequency === "custom" && (
                   <View className="gap-2 mt-2">
-                    {settings.customTimes.map((time) => (
+                    {settings.customTimes.map((time: string) => (
                       <View
                         key={time}
                         className="flex-row items-center justify-between bg-background p-2 rounded-lg"

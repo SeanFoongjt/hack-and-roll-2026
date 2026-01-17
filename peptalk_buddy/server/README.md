@@ -535,6 +535,9 @@ Available environment variables:
 | `VITE_OAUTH_PORTAL_URL` | Manus login portal URL |
 | `OWNER_OPEN_ID` | Owner's Manus ID |
 | `OWNER_NAME` | Owner's display name |
+| `GOOGLE_OAUTH_CLIENT_ID` | Google OAuth client ID for Calendar |
+| `GOOGLE_OAUTH_CLIENT_SECRET` | Google OAuth client secret for Calendar |
+| `GOOGLE_OAUTH_REDIRECT_URI` | Override Google OAuth redirect URI (optional) |
 | `BUILT_IN_FORGE_API_URL` | Manus API endpoint |
 | `BUILT_IN_FORGE_API_KEY` | Manus API key |
 

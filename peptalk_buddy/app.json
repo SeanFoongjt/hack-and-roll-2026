@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "Peptalk Buddy",
+    "slug": "peptalk-buddy",
+    "scheme": "manus20260117015114",
+    "ios": {
+      "infoPlist": {
+        "NSCalendarsUsageDescription": "Peptalk Buddy needs access to your calendar to connect and verify your events.",
+        "NSRemindersUsageDescription": "Peptalk Buddy needs access to reminders to connect to Apple Calendar."
+      }
+    },
+    "android": {
+      "permissions": ["READ_CALENDAR", "WRITE_CALENDAR"]
+    }
+  }
+}

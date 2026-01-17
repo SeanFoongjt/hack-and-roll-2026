@@ -116,6 +116,13 @@ export async function exchangeOAuthCode(
   };
 }
 
+export async function getGoogleOAuthStartUrl(appRedirect: string): Promise<string> {
+  const params = new URLSearchParams({ appRedirect });
+  const endpoint = `/api/google/oauth/start?${params.toString()}`;
+  const result = await apiCall<{ url: string }>(endpoint);
+  return result.url;
+}
+
 // Logout
 export async function logout(): Promise<void> {
   await apiCall<void>("/api/auth/logout", {
