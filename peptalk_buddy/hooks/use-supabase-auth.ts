@@ -1,14 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { Platform } from "react-native";
 import { supabase } from "@/lib/supabase";
-import * as WebBrowser from "expo-web-browser";
-import * as AuthSession from "expo-auth-session";
 import type { User, Session } from "@supabase/supabase-js";
-
-// Warm up browser for faster OAuth on mobile
-if (Platform.OS !== "web") {
-  WebBrowser.maybeCompleteAuthSession();
-}
 
 interface UseSupabaseAuthReturn {
   user: User | null;
@@ -16,7 +8,7 @@ interface UseSupabaseAuthReturn {
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithOAuth: (provider: "google" | "apple") => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
 }
@@ -41,7 +33,6 @@ export function useSupabaseAuth(): UseSupabaseAuthReturn {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
-      console.log("[Auth] State changed:", _event, session?.user?.email);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -52,113 +43,42 @@ export function useSupabaseAuth(): UseSupabaseAuthReturn {
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     setLoading(true);
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      if (error) throw error;
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    setLoading(false);
+    if (error) throw error;
   }, []);
 
   const signUpWithEmail = useCallback(async (email: string, password: string) => {
     setLoading(true);
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-      });
-      if (error) throw error;
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+    setLoading(false);
+    if (error) throw error;
   }, []);
 
-  const signInWithGoogle = useCallback(async () => {
+  const signInWithOAuth = useCallback(async (provider: "google" | "apple") => {
     setLoading(true);
-    try {
-      if (Platform.OS === "web") {
-        // On web, use standard OAuth redirect flow
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            queryParams: {
-              access_type: "offline",
-              prompt: "consent",
-            },
-          },
-        });
-        if (error) throw error;
-      } else {
-        // On mobile, use expo-auth-session
-        const redirectUrl = AuthSession.makeRedirectUri({
-          scheme: "peptalkbuddy",
-          path: "oauth/callback",
-        });
-
-        console.log("[Auth] Google sign-in redirect URL:", redirectUrl);
-
-        const { data, error } = await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: redirectUrl,
-            skipBrowserRedirect: true,
-            queryParams: {
-              access_type: "offline",
-              prompt: "consent",
-            },
-          },
-        });
-
-        if (error) throw error;
-
-        if (data?.url) {
-          // Open browser for authentication
-          const result = await WebBrowser.openAuthSessionAsync(
-            data.url,
-            redirectUrl,
-            { showInRecents: true }
-          );
-
-          if (result.type === "success" && result.url) {
-            // Parse the URL for the auth code
-            const url = new URL(result.url);
-            const code = url.searchParams.get("code");
-
-            if (code) {
-              console.log("[Auth] Exchanging code for session...");
-              const { error: sessionError } =
-                await supabase.auth.exchangeCodeForSession(code);
-
-              if (sessionError) throw sessionError;
-              console.log("[Auth] Google sign-in successful");
-            } else {
-              const errorParam = url.searchParams.get("error");
-              const errorDesc = url.searchParams.get("error_description");
-              if (errorParam) {
-                throw new Error(errorDesc || errorParam);
-              }
-            }
-          } else if (result.type === "cancel") {
-            console.log("[Auth] User cancelled Google sign-in");
-          }
-        }
-      }
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: {
+        // For Expo, you might need to configure deep linking
+        redirectTo: "peptalkbuddy://oauth/callback",
+      },
+    });
+    setLoading(false);
+    if (error) throw error;
   }, []);
 
   const signOut = useCallback(async () => {
     setLoading(true);
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } finally {
-      setLoading(false);
-    }
+    const { error } = await supabase.auth.signOut();
+    setLoading(false);
+    if (error) throw error;
   }, []);
 
   const resetPassword = useCallback(async (email: string) => {
@@ -172,8 +92,9 @@ export function useSupabaseAuth(): UseSupabaseAuthReturn {
     loading,
     signInWithEmail,
     signUpWithEmail,
-    signInWithGoogle,
+    signInWithOAuth,
     signOut,
     resetPassword,
   };
 }
+
