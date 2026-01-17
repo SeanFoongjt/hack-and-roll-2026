@@ -1,4 +1,4 @@
-import { ScrollView, Text, View, TouchableOpacity, Switch, Platform, Alert } from "react-native";
+import { ScrollView, Text, View, TouchableOpacity, Switch, Platform, Alert, ActivityIndicator } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useState, useEffect } from "react";
@@ -7,8 +7,11 @@ import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { useSupabaseAuth } from "@/hooks/use-supabase-auth";
+<<<<<<< HEAD
 import { GoogleSignInButton } from "@/components/google-sign-in";
 import { fetchQuote } from "@/lib/quotes";
+=======
+>>>>>>> 7e1419c (fix: auth)
 
 type NotificationFrequency = "daily" | "twice_daily" | "custom";
 
@@ -38,36 +41,65 @@ export default function SettingsScreen() {
   const [tempTime, setTempTime] = useState(new Date());
   
   // Auth state
-  const { user, loading: authLoading, signOut } = useSupabaseAuth();
+  const { user, loading: authLoading, signOut, signInWithGoogle } = useSupabaseAuth();
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const handleSignInWithGoogle = async () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    setSigningIn(true);
+    try {
+      await signInWithGoogle();
+    } catch (error) {
+      console.error("Error signing in:", error);
+      Alert.alert("Sign In Failed", error instanceof Error ? error.message : "Please try again.");
+    } finally {
+      setSigningIn(false);
+    }
+  };
 
   const handleSignOut = async () => {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     }
     
-    Alert.alert(
-      "Sign Out",
-      "Are you sure you want to sign out?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Sign Out",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await signOut();
-            } catch (error) {
-              console.error("Error signing out:", error);
-              Alert.alert("Error", "Failed to sign out. Please try again.");
-            }
+    // Alert.alert doesn't work on web, use window.confirm instead
+    if (Platform.OS === "web") {
+      const confirmed = window.confirm("Are you sure you want to sign out?");
+      if (confirmed) {
+        try {
+          await signOut();
+        } catch (error) {
+          console.error("Error signing out:", error);
+          window.alert("Failed to sign out. Please try again.");
+        }
+      }
+    } else {
+      Alert.alert(
+        "Sign Out",
+        "Are you sure you want to sign out?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Sign Out",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                await signOut();
+              } catch (error) {
+                console.error("Error signing out:", error);
+                Alert.alert("Error", "Failed to sign out. Please try again.");
+              }
+            },
           },
-        },
-      ]
-    );
+        ]
+      );
+    }
   };
 
   const loadSettings = async () => {
@@ -283,14 +315,33 @@ export default function SettingsScreen() {
                 <Text className="text-sm text-muted mb-2">
                   Sign in to sync your quotes and settings across devices
                 </Text>
-                <GoogleSignInButton
-                  onSuccess={() => {
-                    console.log("Google sign-in successful!");
+                <TouchableOpacity
+                  onPress={handleSignInWithGoogle}
+                  disabled={signingIn || authLoading}
+                  style={{
+                    backgroundColor: "#ffffff",
+                    borderColor: colors.border,
+                    opacity: signingIn ? 0.7 : 1,
                   }}
-                  onError={(error) => {
-                    Alert.alert("Sign In Failed", error.message);
-                  }}
-                />
+                  className="flex-row items-center justify-center p-4 rounded-xl border gap-3"
+                  activeOpacity={0.8}
+                >
+                  {signingIn ? (
+                    <ActivityIndicator size="small" color="#4285F4" />
+                  ) : (
+                    <>
+                      <View
+                        style={{ backgroundColor: "#4285F4" }}
+                        className="w-6 h-6 rounded-full items-center justify-center"
+                      >
+                        <Text className="text-white font-bold text-sm">G</Text>
+                      </View>
+                      <Text className="text-base font-semibold" style={{ color: "#1f1f1f" }}>
+                        Continue with Google
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </View>
             )}
           </View>
