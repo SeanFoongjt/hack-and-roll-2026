@@ -10,7 +10,8 @@ const envPath = path.resolve(process.cwd(), ".env");
 
 if (fs.existsSync(envPath)) {
   const envContent = fs.readFileSync(envPath, "utf8");
-  const lines = envContent.split("\n");
+  // Handle both Unix (\n) and Windows (\r\n) line endings
+  const lines = envContent.split(/\r?\n/);
 
   lines.forEach((line) => {
     // Skip comments and empty lines
