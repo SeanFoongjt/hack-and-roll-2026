@@ -1,17 +1,19 @@
-import { ScrollView, Text, View, TouchableOpacity, Platform, ActivityIndicator } from "react-native";
+import {
+  ScrollView,
+  Text,
+  View,
+  TouchableOpacity,
+  Platform,
+  ActivityIndicator,
+} from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as Notifications from "expo-notifications";
-import { router } from "expo-router";
-
-interface Quote {
-  text: string;
-  author: string;
-  timestamp: number;
-}
+import { router, useFocusEffect } from "expo-router";
+import { fetchQuote, type Quote } from "@/lib/quotes";
 
 // Configure notification handler
 Notifications.setNotificationHandler({
@@ -34,18 +36,24 @@ export default function HomeScreen() {
     loadCurrentQuote();
     requestNotificationPermissions();
     setupNotificationListener();
-    calculateNextNotification();
   }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      calculateNextNotification();
+    }, []),
+  );
+
   const requestNotificationPermissions = async () => {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    const { status: existingStatus } =
+      await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-    
+
     if (existingStatus !== "granted") {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-    
+
     if (finalStatus !== "granted") {
       alert("Please enable notifications to receive pep talks!");
     }
@@ -53,13 +61,15 @@ export default function HomeScreen() {
 
   const setupNotificationListener = () => {
     // Handle notification tap
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const quote = response.notification.request.content.data.quote as Quote;
-      if (quote) {
-        setCurrentQuote(quote);
-        // Quote will be displayed on home screen
-      }
-    });
+    const subscription = Notifications.addNotificationResponseReceivedListener(
+      (response) => {
+        const quote = response.notification.request.content.data.quote as Quote;
+        if (quote) {
+          setCurrentQuote(quote);
+          // Quote will be displayed on home screen
+        }
+      },
+    );
 
     return () => subscription.remove();
   };
@@ -81,59 +91,15 @@ export default function HomeScreen() {
   const fetchNewQuote = async () => {
     setLoading(true);
     try {
-      // Using API Ninjas quotes API
-      const response = await fetch("https://api.api-ninjas.com/v1/quotes?category=inspirational", {
-        headers: {
-          "X-Api-Key": "DEMO_KEY", // In production, this should be in env vars
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data && data.length > 0) {
-          const quote: Quote = {
-            text: data[0].quote,
-            author: data[0].author,
-            timestamp: Date.now(),
-          };
-          setCurrentQuote(quote);
-          await AsyncStorage.setItem("peptalk_current_quote", JSON.stringify(quote));
-          
-          // Save to history
-          await saveToHistory(quote);
-        }
-      } else {
-        // Fallback quotes if API fails
-        const fallbackQuotes = [
-          {
-            text: "Believe you can and you're halfway there.",
-            author: "Theodore Roosevelt",
-            timestamp: Date.now(),
-          },
-          {
-            text: "The only way to do great work is to love what you do.",
-            author: "Steve Jobs",
-            timestamp: Date.now(),
-          },
-          {
-            text: "Success is not final, failure is not fatal: it is the courage to continue that counts.",
-            author: "Winston Churchill",
-            timestamp: Date.now(),
-          },
-        ];
-        const randomQuote = fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
-        setCurrentQuote(randomQuote);
-        await AsyncStorage.setItem("peptalk_current_quote", JSON.stringify(randomQuote));
-      }
+      const quote = await fetchQuote();
+      setCurrentQuote(quote);
+      await AsyncStorage.setItem(
+        "peptalk_current_quote",
+        JSON.stringify(quote),
+      );
+      await saveToHistory(quote);
     } catch (error) {
-      console.error("Error fetching quote:", error);
-      // Use fallback quote on error
-      const fallbackQuote: Quote = {
-        text: "Every day is a new beginning. Take a deep breath and start again.",
-        author: "Unknown",
-        timestamp: Date.now(),
-      };
-      setCurrentQuote(fallbackQuote);
+      console.error("Error in fetchNewQuote:", error);
     } finally {
       setLoading(false);
     }
@@ -146,7 +112,10 @@ export default function HomeScreen() {
       history.unshift(quote);
       // Keep only last 50 quotes
       const trimmedHistory = history.slice(0, 50);
-      await AsyncStorage.setItem("peptalk_quote_history", JSON.stringify(trimmedHistory));
+      await AsyncStorage.setItem(
+        "peptalk_quote_history",
+        JSON.stringify(trimmedHistory),
+      );
     } catch (error) {
       console.error("Error saving to history:", error);
     }
@@ -159,6 +128,28 @@ export default function HomeScreen() {
     await fetchNewQuote();
   };
 
+  // Test the notifications sent
+  const handleTestNotification = async () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+
+    // Check permissions again just to be sure
+    const { status } = await Notifications.getPermissionsAsync();
+    if (status !== "granted") {
+      alert("Permission not granted!");
+      return;
+    }
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "Test Notification",
+        body: "This is a test notification from PepTalk Buddy! 🚀",
+      },
+      trigger: null, // scheduled immediately
+    });
+  };
+
   const calculateNextNotification = async () => {
     try {
       const stored = await AsyncStorage.getItem("peptalk_settings");
@@ -169,18 +160,19 @@ export default function HomeScreen() {
         const currentTime = now.getHours() * 60 + now.getMinutes();
 
         // Find next notification time
-        for (const time of times) {
+        const sortedTimes = [...times].sort();
+        for (const time of sortedTimes) {
           const [hours, minutes] = time.split(":").map(Number);
           const notificationTime = hours * 60 + minutes;
-          
+
           if (notificationTime > currentTime) {
             setNextNotificationTime(time);
             return;
           }
         }
-        
+
         // If no time found today, show first time tomorrow
-        setNextNotificationTime(`${times[0]} (tomorrow)`);
+        setNextNotificationTime(`${sortedTimes[0]} (tomorrow)`);
       }
     } catch (error) {
       console.error("Error calculating next notification:", error);
@@ -205,7 +197,9 @@ export default function HomeScreen() {
         <View className="flex-1 gap-6 justify-center">
           {/* App Title */}
           <View className="items-center gap-2 mb-4">
-            <Text className="text-3xl font-bold text-foreground">PepTalk Buddy</Text>
+            <Text className="text-3xl font-bold text-foreground">
+              PepTalk Buddy
+            </Text>
             <Text className="text-base text-muted text-center">
               Your daily dose of motivation
             </Text>
@@ -308,6 +302,17 @@ export default function HomeScreen() {
             </View>
           )}
 
+          {/* Test Notification Button (Dev Only) */}
+          <TouchableOpacity
+            onPress={handleTestNotification}
+            style={{ borderColor: colors.primary }}
+            className="p-3 rounded-xl border items-center self-center"
+          >
+            <Text style={{ color: colors.primary }} className="font-semibold">
+              🔔 Test Notification
+            </Text>
+          </TouchableOpacity>
+
           {/* Info Card */}
           <View
             style={{
@@ -319,7 +324,8 @@ export default function HomeScreen() {
               style={{ color: colors.foreground }}
               className="text-sm text-center leading-relaxed"
             >
-              💡 Tip: Visit Settings to customize your notification schedule and connect your calendar for personalized pep talks!
+              💡 Tip: Visit Settings to customize your notification schedule and
+              connect your calendar for personalized pep talks!
             </Text>
           </View>
         </View>

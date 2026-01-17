@@ -1,16 +1,26 @@
-import { ScrollView, Text, View, TouchableOpacity, Switch, Platform } from "react-native";
+import {
+  ScrollView,
+  Text,
+  View,
+  TouchableOpacity,
+  Switch,
+  Platform,
+} from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
+import * as Notifications from "expo-notifications";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { fetchQuote } from "@/lib/quotes";
 
 type NotificationFrequency = "daily" | "twice_daily" | "custom";
 
 interface Settings {
   notificationFrequency: NotificationFrequency;
   customTimes: string[];
+  savedCustomTimes?: string[];
   calendarIntegrationEnabled: boolean;
   googleCalendarConnected: boolean;
   appleCalendarConnected: boolean;
@@ -49,10 +59,52 @@ export default function SettingsScreen() {
 
   const saveSettings = async (newSettings: Settings) => {
     try {
-      await AsyncStorage.setItem("peptalk_settings", JSON.stringify(newSettings));
+      await AsyncStorage.setItem(
+        "peptalk_settings",
+        JSON.stringify(newSettings),
+      );
       setSettings(newSettings);
+      scheduleNotifications(newSettings);
     } catch (error) {
       console.error("Error saving settings:", error);
+    }
+  };
+
+  const scheduleNotifications = async (currentSettings: Settings) => {
+    try {
+      if (Platform.OS === "web") return;
+
+      await Notifications.cancelAllScheduledNotificationsAsync();
+
+      if (!currentSettings.notificationsEnabled) return;
+
+      // Use the customTimes array directly as it is kept in sync with frequency
+      // by the handleFrequencyChange function.
+      const timesToSchedule = currentSettings.customTimes;
+
+      for (const timeStr of timesToSchedule) {
+        const [hours, minutes] = timeStr.split(":").map(Number);
+
+        // Fetch a fresh quote for the notification
+        const quote = await fetchQuote();
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "PepTalk Buddy",
+            body: `"${quote.text}"`,
+            data: { quote },
+            subtitle: quote.author, // Shows author effectively on iOS
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+            hour: hours,
+            minute: minutes,
+            repeats: true,
+          },
+        });
+      }
+    } catch (error) {
+      console.error("Error scheduling notifications:", error);
     }
   };
 
@@ -60,13 +112,34 @@ export default function SettingsScreen() {
     if (Platform.OS !== "web") {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     }
+
     let customTimes = settings.customTimes;
+    let savedCustomTimes = settings.savedCustomTimes || [];
+
+    // Save current custom times if we are currently in "custom" mode and switching away
+    if (settings.notificationFrequency === "custom" && frequency !== "custom") {
+      savedCustomTimes = [...customTimes];
+    }
+
     if (frequency === "daily") {
       customTimes = ["12:00"];
     } else if (frequency === "twice_daily") {
       customTimes = ["12:00", "18:00"];
+    } else if (frequency === "custom") {
+      // Restore saved times if available, otherwise default
+      if (savedCustomTimes.length > 0) {
+        customTimes = savedCustomTimes;
+      } else if (customTimes.length === 0) {
+        customTimes = ["09:00"];
+      }
     }
-    saveSettings({ ...settings, notificationFrequency: frequency, customTimes });
+
+    saveSettings({
+      ...settings,
+      notificationFrequency: frequency,
+      customTimes,
+      savedCustomTimes,
+    });
   };
 
   const handleCalendarToggle = (value: boolean) => {
@@ -107,8 +180,9 @@ export default function SettingsScreen() {
     setShowTimePicker(true);
   };
 
-  const handleTimeConfirm = () => {
-    const timeString = `${tempTime.getHours().toString().padStart(2, "0")}:${tempTime.getMinutes().toString().padStart(2, "0")}`;
+  const handleTimeConfirm = (selectedDate?: Date) => {
+    const date = selectedDate || tempTime;
+    const timeString = `${date.getHours().toString().padStart(2, "0")}:${date.getMinutes().toString().padStart(2, "0")}`;
     if (!settings.customTimes.includes(timeString)) {
       saveSettings({
         ...settings,
@@ -203,7 +277,8 @@ export default function SettingsScreen() {
                     settings.notificationFrequency === "twice_daily"
                       ? colors.primary
                       : colors.background,
-                  opacity: settings.notificationFrequency === "twice_daily" ? 1 : 0.7,
+                  opacity:
+                    settings.notificationFrequency === "twice_daily" ? 1 : 0.7,
                 }}
                 className="p-4 rounded-xl border border-border"
               >
@@ -228,7 +303,8 @@ export default function SettingsScreen() {
                     settings.notificationFrequency === "custom"
                       ? colors.primary
                       : colors.background,
-                  opacity: settings.notificationFrequency === "custom" ? 1 : 0.7,
+                  opacity:
+                    settings.notificationFrequency === "custom" ? 1 : 0.7,
                 }}
                 className="p-4 rounded-xl border border-border"
               >
@@ -251,7 +327,9 @@ export default function SettingsScreen() {
                         className="flex-row items-center justify-between bg-background p-2 rounded-lg"
                       >
                         <Text style={{ color: colors.foreground }}>{time}</Text>
-                        <TouchableOpacity onPress={() => removeCustomTime(time)}>
+                        <TouchableOpacity
+                          onPress={() => removeCustomTime(time)}
+                        >
                           <Text style={{ color: colors.error }}>Remove</Text>
                         </TouchableOpacity>
                       </View>
@@ -262,10 +340,65 @@ export default function SettingsScreen() {
                         style={{ backgroundColor: colors.accent }}
                         className="p-2 rounded-lg items-center"
                       >
-                        <Text style={{ color: colors.foreground }} className="font-semibold">
+                        <Text
+                          style={{ color: colors.foreground }}
+                          className="font-semibold"
+                        >
                           + Add Time
                         </Text>
                       </TouchableOpacity>
+                    )}
+                    {/* Time Picker Modal */}
+                    {showTimePicker && (
+                      <View className="mt-4">
+                        <DateTimePicker
+                          value={tempTime}
+                          mode="time"
+                          is24Hour={false}
+                          display={
+                            Platform.OS === "ios" ? "spinner" : "default"
+                          }
+                          onChange={(event: any, selectedDate?: Date) => {
+                            if (Platform.OS === "android") {
+                              if (event.type === "set" && selectedDate) {
+                                setTempTime(selectedDate);
+                                handleTimeConfirm(selectedDate);
+                              } else {
+                                setShowTimePicker(false);
+                              }
+                            } else {
+                              // iOS logic: just update temp state
+                              if (selectedDate) {
+                                setTempTime(selectedDate);
+                              }
+                            }
+                          }}
+                        />
+                        {Platform.OS === "ios" && (
+                          <View className="flex-row justify-center gap-4 mt-2">
+                            <TouchableOpacity
+                              onPress={() => setShowTimePicker(false)}
+                              className="p-3 px-6 rounded-xl border border-border bg-background"
+                            >
+                              <Text style={{ color: colors.foreground }}>
+                                Cancel
+                              </Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                              onPress={() => handleTimeConfirm(tempTime)}
+                              className="p-3 px-6 rounded-xl shadow-sm"
+                              style={{ backgroundColor: colors.primary }}
+                            >
+                              <Text
+                                style={{ color: colors.surface }}
+                                className="font-semibold"
+                              >
+                                Save Time
+                              </Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
+                      </View>
                     )}
                   </View>
                 )}
@@ -347,25 +480,6 @@ export default function SettingsScreen() {
               </View>
             )}
           </View>
-
-          {/* Time Picker Modal */}
-          {showTimePicker && (
-            <View className="mt-4">
-              <DateTimePicker
-                value={tempTime}
-                mode="time"
-                is24Hour={false}
-                onChange={(event: any, selectedDate?: Date) => {
-                  if (event.type === "set" && selectedDate) {
-                    setTempTime(selectedDate);
-                    handleTimeConfirm();
-                  } else {
-                    setShowTimePicker(false);
-                  }
-                }}
-              />
-            </View>
-          )}
         </View>
       </ScrollView>
     </ScreenContainer>
