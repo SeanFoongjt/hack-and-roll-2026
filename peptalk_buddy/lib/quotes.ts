@@ -31,7 +31,7 @@ export async function fetchQuote(): Promise<Quote> {
       "https://api.api-ninjas.com/v1/quotes?category=inspirational",
       {
         headers: {
-          "X-Api-Key": "5RFLHt9uUhOtFEQRy6Rlwu5lVJ8Y3yYAL1VPz1qr", // In production, this should be in env vars
+          "X-Api-Key": process.env.NINJA_API_KEY || "",
         },
       },
     );
