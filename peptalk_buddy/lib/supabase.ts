@@ -6,18 +6,18 @@ import { Platform } from "react-native";
 // Get Supabase credentials from environment
 // You'll need to set these in your .env file:
 // EXPO_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-// EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+// EXPO_PUBLIC_SUPABASE_KEY=your-publishable-key
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL ?? "";
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? "";
+const supabaseKey = process.env.EXPO_PUBLIC_SUPABASE_KEY ?? "";
 
-if (!supabaseUrl || !supabaseAnonKey) {
+if (!supabaseUrl || !supabaseKey) {
   console.warn(
-    "[Supabase] Missing credentials. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY in your .env file"
+    "[Supabase] Missing credentials. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_KEY in your .env file"
   );
 }
 
 // Create Supabase client with AsyncStorage for React Native
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+export const supabase = createClient(supabaseUrl, supabaseKey, {
   auth: {
     storage: AsyncStorage,
     autoRefreshToken: true,

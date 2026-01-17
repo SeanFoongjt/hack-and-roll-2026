@@ -60,3 +60,7 @@ Thumbs.db
 *.tgz
 *.tar.gz
 .cache/
+
+# env variables
+*.env
+.env
