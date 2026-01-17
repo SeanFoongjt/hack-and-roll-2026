@@ -1,10 +1,12 @@
-import { ScrollView, Text, View, TouchableOpacity, Switch, Platform } from "react-native";
+import { ScrollView, Text, View, TouchableOpacity, Switch, Platform, Alert } from "react-native";
 import { ScreenContainer } from "@/components/screen-container";
 import { useColors } from "@/hooks/use-colors";
 import { useState, useEffect } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { useSupabaseAuth } from "@/hooks/use-supabase-auth";
+import { GoogleSignInButton } from "@/components/google-sign-in";
 
 type NotificationFrequency = "daily" | "twice_daily" | "custom";
 
@@ -31,10 +33,39 @@ export default function SettingsScreen() {
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [tempTime, setTempTime] = useState(new Date());
+  
+  // Auth state
+  const { user, loading: authLoading, signOut } = useSupabaseAuth();
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  const handleSignOut = async () => {
+    if (Platform.OS !== "web") {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    }
+    
+    Alert.alert(
+      "Sign Out",
+      "Are you sure you want to sign out?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Sign Out",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (error) {
+              console.error("Error signing out:", error);
+              Alert.alert("Error", "Failed to sign out. Please try again.");
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const loadSettings = async () => {
     try {
@@ -138,6 +169,63 @@ export default function SettingsScreen() {
             <Text className="text-base text-muted">
               Customize your pep talk notifications
             </Text>
+          </View>
+
+          {/* Account Section */}
+          <View className="bg-surface rounded-2xl p-4 border border-border">
+            <Text className="text-lg font-semibold text-foreground mb-3">
+              Account
+            </Text>
+            
+            {user ? (
+              // Signed in state
+              <View className="gap-4">
+                <View className="flex-row items-center gap-3">
+                  {/* Avatar placeholder */}
+                  <View
+                    style={{ backgroundColor: colors.primary }}
+                    className="w-12 h-12 rounded-full items-center justify-center"
+                  >
+                    <Text className="text-xl text-white font-bold">
+                      {user.email?.charAt(0).toUpperCase() || "U"}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-base font-semibold text-foreground">
+                      {user.user_metadata?.full_name || user.email?.split("@")[0] || "User"}
+                    </Text>
+                    <Text className="text-sm text-muted">
+                      {user.email}
+                    </Text>
+                  </View>
+                </View>
+                
+                <TouchableOpacity
+                  onPress={handleSignOut}
+                  style={{ backgroundColor: colors.error }}
+                  className="p-3 rounded-xl items-center"
+                >
+                  <Text style={{ color: colors.surface }} className="font-semibold">
+                    Sign Out
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              // Signed out state
+              <View className="gap-3">
+                <Text className="text-sm text-muted mb-2">
+                  Sign in to sync your quotes and settings across devices
+                </Text>
+                <GoogleSignInButton
+                  onSuccess={() => {
+                    console.log("Google sign-in successful!");
+                  }}
+                  onError={(error) => {
+                    Alert.alert("Sign In Failed", error.message);
+                  }}
+                />
+              </View>
+            )}
           </View>
 
           {/* Notifications Section */}
