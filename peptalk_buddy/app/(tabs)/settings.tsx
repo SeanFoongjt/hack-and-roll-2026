@@ -110,10 +110,9 @@ export default function SettingsScreen() {
             subtitle: quote.author, // Shows author effectively on iOS
           },
           trigger: {
-            type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
             hour: hours,
             minute: minutes,
-            repeats: true,
           },
         });
       }
