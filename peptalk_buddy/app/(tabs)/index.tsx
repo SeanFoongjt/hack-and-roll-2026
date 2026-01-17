@@ -82,9 +82,9 @@ export default function HomeScreen() {
     setLoading(true);
     try {
       // Using API Ninjas quotes API
-      const response = await fetch("https://api.api-ninjas.com/v1/quotes?category=inspirational", {
+      const response = await fetch("https://api.api-ninjas.com/v2/quotes?category=inspirational", {
         headers: {
-          "X-Api-Key": "DEMO_KEY", // In production, this should be in env vars
+          "X-Api-Key": process.env.NINJA_API_KEY ?? "", 
         },
       });
 
